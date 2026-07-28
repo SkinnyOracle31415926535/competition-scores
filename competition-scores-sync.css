@@ -1,0 +1,234 @@
+.competition-sync-open {
+  min-height: 38px;
+  padding: 6px 12px;
+  border: 3px outset #66ffff;
+  border-radius: 0;
+  background: #ffff66;
+  color: #000;
+  font: 900 12px/1.2 "Courier New", monospace;
+  text-transform: uppercase;
+  cursor: pointer;
+}
+
+.competition-sync-open[data-state="syncing"],
+.competition-sync-open[data-state="review"] {
+  background: #fff36a;
+}
+
+.competition-sync-open[data-state="synced"] {
+  background: #bfffc8;
+  color: #07361f;
+}
+
+.competition-sync-open[data-state="offline"],
+.competition-sync-open[data-state="conflict"] {
+  background: #ffd7d7;
+  color: #6a0f0f;
+}
+
+.competition-sync-dialog {
+  width: min(760px, calc(100vw - 24px));
+  max-height: calc(100vh - 24px);
+  padding: 0;
+  border: 4px ridge #66ffff;
+  border-radius: 0;
+  color: #071f15;
+  background: #ccffcc;
+  box-shadow: 8px 8px 0 #000;
+  font-family: "Courier New", Courier, monospace;
+}
+
+.competition-sync-dialog::backdrop {
+  background: rgb(0 0 51 / 78%);
+}
+
+.competition-sync-window {
+  max-height: calc(100vh - 32px);
+  overflow: auto;
+  padding: 18px;
+}
+
+.competition-sync-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  padding-bottom: 12px;
+  border-bottom: 4px double #0b4f32;
+}
+
+.competition-sync-heading h2,
+.competition-sync-review h3,
+.competition-sync-conflicts h3 {
+  margin: 0;
+}
+
+.competition-sync-kicker {
+  margin: 0 0 4px;
+  color: #8b007d;
+  font-size: 0.78rem;
+  font-weight: 900;
+  letter-spacing: 0.08em;
+}
+
+.competition-sync-close {
+  width: 42px;
+  min-width: 42px;
+  height: 42px;
+  border: 3px outset #66ffff;
+  border-radius: 0;
+  background: #fff;
+  color: #071f15;
+  font: 900 1.4rem/1 monospace;
+  cursor: pointer;
+}
+
+.competition-sync-copy,
+.competition-sync-safety,
+.competition-sync-footnote {
+  line-height: 1.45;
+}
+
+.competition-sync-safety,
+.competition-sync-footnote {
+  font-size: 0.86rem;
+}
+
+.competition-sync-state {
+  display: grid;
+  gap: 3px;
+  margin: 14px 0;
+  padding: 12px;
+  border: 3px inset #66ffff;
+  background: #fff;
+}
+
+.competition-sync-state[data-state="syncing"],
+.competition-sync-state[data-state="review"] {
+  background: #fffbd1;
+}
+
+.competition-sync-state[data-state="synced"] {
+  background: #dfffe3;
+}
+
+.competition-sync-state[data-state="offline"],
+.competition-sync-state[data-state="conflict"] {
+  border-color: #8f1919;
+  background: #ffe3e3;
+}
+
+.competition-sync-alert {
+  margin: 12px 0;
+  padding: 10px;
+  border: 3px solid #8f1919;
+  background: #ffe3e3;
+  color: #6a0f0f;
+  font-weight: 900;
+  overflow-wrap: anywhere;
+}
+
+.competition-sync-actions,
+.competition-sync-conflict-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.competition-sync-actions button,
+.competition-sync-review button,
+.competition-sync-conflict-actions button {
+  min-height: 42px;
+  padding: 8px 12px;
+  border: 3px outset #66ffff;
+  border-radius: 0;
+  background: #fff;
+  color: #071f15;
+  font: inherit;
+  font-weight: 900;
+  cursor: pointer;
+}
+
+.competition-sync-actions button.is-primary,
+.competition-sync-review button.is-primary {
+  background: #bfffc8;
+}
+
+.competition-sync-actions button:disabled,
+.competition-sync-review button:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.competition-sync-review,
+.competition-sync-conflicts {
+  margin-top: 16px;
+  padding: 14px;
+  border: 3px ridge #ff00cc;
+  background: #fff;
+}
+
+.competition-sync-record,
+.competition-sync-conflict {
+  display: grid;
+  gap: 6px;
+  margin: 10px 0;
+  padding: 10px;
+  border: 2px solid #4b6f5e;
+  overflow-wrap: anywhere;
+}
+
+.competition-sync-record label {
+  display: grid;
+  gap: 4px;
+}
+
+.competition-sync-record select {
+  width: 100%;
+  min-height: 42px;
+  padding: 6px;
+  border: 2px solid #0b4f32;
+  border-radius: 0;
+  background: #fff;
+  color: #071f15;
+  font: inherit;
+}
+
+.competition-sync-record-status {
+  color: #315645;
+  font-size: 0.86rem;
+}
+
+.competition-sync-zero-write[data-safe="true"] {
+  color: #0b5d2b;
+  font-weight: 900;
+}
+
+.competition-sync-zero-write[data-safe="false"],
+[data-competition-migration-blocked] {
+  color: #8f1919;
+  font-weight: 900;
+}
+
+@media (max-width: 520px) {
+  .competition-sync-dialog {
+    width: calc(100vw - 12px);
+    max-height: calc(100vh - 12px);
+    box-shadow: 4px 4px 0 #000;
+  }
+
+  .competition-sync-window {
+    max-height: calc(100vh - 20px);
+    padding: 12px;
+  }
+
+  .competition-sync-actions {
+    display: grid;
+    grid-template-columns: 1fr;
+  }
+
+  .competition-sync-actions button,
+  .competition-sync-review button {
+    width: 100%;
+  }
+}
