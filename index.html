@@ -1830,6 +1830,7 @@
       }
     }
   </style>
+  <link rel="stylesheet" href="competition-scores-sync.css">
   <!-- Gymnastics Vault icon -->
   <link rel="icon" type="image/png" href="icon.png">
   <link rel="apple-touch-icon" sizes="180x180" href="icon.png">
@@ -2109,6 +2110,7 @@
     </div>
   </main>
 
+  <script src="competition-scores-store.js"></script>
   <script>
     const STORAGE_KEY = "gymnastics-class-routine-scoring-combined-v1";
     const TEAM_STORAGE_KEY = "gymnastics-class-routine-scoring-team-points-v1";
@@ -2553,12 +2555,21 @@
     }
 
     function save() {
-      try {
-        syncActiveClassProfile();
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
-      } catch (error) {
-        setStatus("Local save unavailable.");
+      syncActiveClassProfile();
+      const store = window.CompetitionScoresStore;
+      if (!store) {
+        try {
+          localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+        } catch (error) {
+          setStatus("Local save unavailable.");
+        }
+        return;
       }
+      void store.saveCurrent(state).catch((error) => {
+        setStatus(error && error.message
+          ? error.message
+          : "Local save unavailable.");
+      });
     }
 
     function readStoredState(storageKeys = [STORAGE_KEY]) {
@@ -2655,9 +2666,18 @@
 
     function load() {
       try {
+        const store = window.CompetitionScoresStore;
+        const local = store ? store.inspect() : null;
+        if (local && local.status === "current") {
+          state = store.readCurrent();
+          return;
+        }
         const saved = readStoredState([STORAGE_KEY])
           || readStoredState([INDIVIDUAL_STORAGE_KEY, TEAM_STORAGE_KEY]);
         applySavedState(saved);
+        if (local && !["absent", "current"].includes(local.status)) {
+          window.setTimeout(() => setStatus(local.error), 0);
+        }
       } catch (error) {
         state = createDefaultState();
       }
@@ -5359,9 +5379,52 @@
     copyMarkdownButton.addEventListener("click", copyMarkdown);
     selectMarkdownButton.addEventListener("click", selectMarkdown);
 
+    window.CompetitionScoresAppBridge = Object.freeze({
+      defaultState: () => JSON.parse(JSON.stringify(createDefaultState())),
+      snapshot: () => JSON.parse(JSON.stringify(state)),
+      replaceState: (nextState) => {
+        if (!window.CompetitionScoresStore.validState(nextState)) {
+          throw new Error("Competition Scores refused an invalid synchronized state.");
+        }
+        state = JSON.parse(JSON.stringify(nextState));
+        resetClassArmed = false;
+        removeAthleteArmedId = null;
+        pendingTeamPointWinnerId = null;
+        syncInputsFromState();
+        updateAll();
+      },
+      hasDirtyEditor: () => {
+        const active = document.activeElement;
+        return Boolean(active
+          && active.closest
+          && active.closest(".app")
+          && active.matches("input:not([type=button]):not([type=submit]), textarea:not([readonly]), select")
+          && !active.disabled);
+      },
+      whenEditorsIdle: () => {
+        if (!window.CompetitionScoresAppBridge.hasDirtyEditor()) return Promise.resolve();
+        return new Promise((resolve) => {
+          const check = () => {
+            window.setTimeout(() => {
+              if (window.CompetitionScoresAppBridge.hasDirtyEditor()) return;
+              document.removeEventListener("focusout", check, true);
+              resolve();
+            }, 0);
+          };
+          document.addEventListener("focusout", check, true);
+        });
+      }
+    });
+
+    window.addEventListener("competition-scores-storage-error", (event) => {
+      if (event.detail && event.detail.message) setStatus(event.detail.message);
+    });
+
     load();
     syncInputsFromState();
     updateAll();
   </script>
+  <script src="https://ryan-app-sync.ryan-666-mp3.chatgpt.site/ryan-app-sync.js" crossorigin="anonymous"></script>
+  <script src="competition-scores-sync.js"></script>
 </body>
 </html>
