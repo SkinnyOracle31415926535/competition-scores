@@ -912,7 +912,7 @@
 
     .team-randomizer-row {
       display: grid;
-      grid-template-columns: minmax(96px, 136px) minmax(0, 1fr) minmax(0, 1fr);
+      grid-template-columns: minmax(96px, 136px) minmax(0, 1fr);
       gap: 8px;
       align-items: end;
       margin-bottom: 10px;
@@ -1673,6 +1673,11 @@
         10px 10px 0 rgba(0, 0, 0, 0.5);
     }
 
+    #newClassModal .event-picker-card {
+      max-height: calc(100vh - 32px);
+      overflow-y: auto;
+    }
+
     .event-picker-title {
       margin-bottom: 12px;
       padding: 8px;
@@ -1877,8 +1882,10 @@
         <div id="newClassTitle" class="event-picker-title">new class</div>
         <label for="newClassName">class name</label>
         <input id="newClassName" autocomplete="off" placeholder="Class name">
+        <label for="newClassAthletes">athletes — one per line</label>
+        <textarea id="newClassAthletes" autocomplete="off" placeholder="Athlete name"></textarea>
         <div class="toolbar">
-          <button id="createClass" type="button">create class</button>
+          <button id="createClass" type="button">save class</button>
           <button id="newClassCancel" type="button" class="secondary">cancel</button>
         </div>
       </div>
@@ -1986,7 +1993,7 @@
             <button id="beginCompetition" type="button" class="wide" aria-label="begin competition"><span class="new-game-label">begin competition</span></button>
             <button id="classSetupIndividualMode" type="button" class="setup-mode-button secondary" data-scoring-mode="individual">individual</button>
             <button id="classSetupTeamMode" type="button" class="setup-mode-button secondary" data-scoring-mode="team">team</button>
-            <button id="setClassStartValues" type="button" class="secondary">set class SV</button>
+            <button id="randomizeTeamPoints" type="button" class="secondary" hidden>shuffle teams</button>
             <button id="resetClass" type="button" class="danger">reset class</button>
           </div>
         </section>
@@ -2012,7 +2019,6 @@
                 <option value="keep">keep same groups</option>
               </select>
             </div>
-            <button id="randomizeTeamPoints" type="button">shuffle teams</button>
           </div>
           <div id="manualTeamBuilder" class="manual-team-builder" hidden>
             <div id="manualAthletePool" class="manual-team-pool" data-drop-team-id="__pool">
@@ -2021,36 +2027,13 @@
             </div>
             <div id="manualTeamGrid" class="manual-team-grid"></div>
           </div>
-          <div id="teamAthleteManager" class="team-athlete-manager" hidden>
-            <div class="team-athlete-title">athletes</div>
-            <div class="add-row">
-              <div>
-                <label for="teamAthleteName">add athlete</label>
-                <input id="teamAthleteName" autocomplete="off" placeholder="Name">
-              </div>
-              <button id="teamAddAthlete" type="button">add</button>
-            </div>
-            <div id="teamAthleteList" class="roster-list team-athlete-list"></div>
-            <div id="teamAthleteEmpty" class="empty">no athletes yet</div>
-          </div>
         </section>
 
-        <section id="athletePanel" class="panel">
-          <div class="panel-title">athletes</div>
-          <div class="add-row">
-            <div>
-              <label for="athleteName">athlete</label>
-              <input id="athleteName" autocomplete="off" placeholder="Name">
-            </div>
-            <button id="addAthlete" type="button">add</button>
-          </div>
+        <section id="rosterPanel" class="panel">
+          <div class="panel-title">competition order</div>
+          <div id="rosterList" class="roster-list"></div>
+          <div id="rosterEmpty" class="empty">no athletes yet</div>
         </section>
-
-      <section id="rosterPanel" class="panel">
-        <div class="panel-title">competition order</div>
-        <div id="rosterList" class="roster-list"></div>
-        <div id="rosterEmpty" class="empty">no athletes yet</div>
-      </section>
 
         <section class="panel">
           <div class="panel-title">classes</div>
@@ -2129,8 +2112,6 @@
     const classNameInput = document.getElementById("className");
     const meetNameInput = document.getElementById("meetName");
     const scoreDateInput = document.getElementById("scoreDate");
-    const athleteNameInput = document.getElementById("athleteName");
-    const addAthleteButton = document.getElementById("addAthlete");
     const resetClassButton = document.getElementById("resetClass");
     const saveClassProfileButton = document.getElementById("saveClassProfile");
     const newClassProfileButton = document.getElementById("newClassProfile");
@@ -2143,6 +2124,7 @@
     const classManagerClose = document.getElementById("classManagerClose");
     const newClassModal = document.getElementById("newClassModal");
     const newClassNameInput = document.getElementById("newClassName");
+    const newClassAthletesInput = document.getElementById("newClassAthletes");
     const createClassButton = document.getElementById("createClass");
     const newClassCancel = document.getElementById("newClassCancel");
     const status = document.getElementById("status");
@@ -2154,7 +2136,6 @@
     const classSetupSummary = document.getElementById("classSetupSummary");
     const athleteCountStat = document.getElementById("athleteCountStat");
     const athleteCount = document.getElementById("athleteCount");
-    const athletePanel = document.getElementById("athletePanel");
     const teamScoreStat = document.getElementById("teamScoreStat");
     const teamScoreTotal = document.getElementById("teamScoreTotal");
     const topAllAroundStat = document.getElementById("topAllAroundStat");
@@ -2178,16 +2159,10 @@
     const manualAthletePool = document.getElementById("manualAthletePool");
     const manualAthletePoolList = document.getElementById("manualAthletePoolList");
     const manualTeamGrid = document.getElementById("manualTeamGrid");
-    const teamAthleteManager = document.getElementById("teamAthleteManager");
-    const teamAthleteNameInput = document.getElementById("teamAthleteName");
-    const teamAddAthleteButton = document.getElementById("teamAddAthlete");
-    const teamAthleteList = document.getElementById("teamAthleteList");
-    const teamAthleteEmpty = document.getElementById("teamAthleteEmpty");
     const teamPointsGrid = document.getElementById("teamPointsGrid");
     const allAroundGrid = document.getElementById("allAroundGrid");
     const rankingsPanel = document.getElementById("rankingsPanel");
     const rankingsGrid = document.getElementById("rankingsGrid");
-    const setClassStartValuesButton = document.getElementById("setClassStartValues");
     const beginCompetitionButton = document.getElementById("beginCompetition");
     const eventPickerModal = document.getElementById("eventPickerModal");
     const eventPickerButtons = document.getElementById("eventPickerButtons");
@@ -2242,6 +2217,9 @@
     let resetClassTimer = null;
     let removeAthleteArmedId = null;
     let removeAthleteTimer = null;
+    let deleteClassArmedId = null;
+    let deleteClassTimer = null;
+    let editingClassProfileId = null;
     let draggedManualAthleteName = "";
     let selectedManualAthleteName = "";
     let pendingTeamPointWinnerId = null;
@@ -2703,15 +2681,14 @@
       const isTeamMode = mode === "team";
       classSetupSummary.hidden = isTeamMode;
       athleteCountStat.hidden = isTeamMode;
-      athletePanel.hidden = isTeamMode;
-      teamAthleteManager.hidden = !isTeamMode;
       teamScoreStat.hidden = isTeamMode;
       topAllAroundStat.hidden = isTeamMode;
       bestTeamEventStat.hidden = isTeamMode;
       rosterPanel.hidden = isTeamMode;
       allAroundPanel.hidden = isTeamMode;
       teamScorePanel.hidden = isTeamMode;
-      rankingsPanel.hidden = isTeamMode;
+      rankingsPanel.hidden = false;
+      randomizeTeamPointsButton.hidden = !isTeamMode;
       if (comparisonPanel) comparisonPanel.hidden = mode === "team";
       if (markdownPanel) markdownPanel.hidden = false;
     }
@@ -3106,21 +3083,28 @@
       setStatus(team.name + " score " + team.tally + ".");
     }
 
-    function getTeamCurrentTotal(team) {
-      const members = Array.isArray(team.members) ? team.members : [];
-      return members.reduce((teamSum, member) => {
-        const athlete = state.athletes.find((item) => item.name === member);
-        if (!athlete) return teamSum;
-        const athleteTotal = EVENTS.reduce((sum, event) => {
-          const score = getFinalScore(athlete, event.id);
-          return Number.isFinite(score) ? sum + score : sum;
-        }, 0);
-        return teamSum + athleteTotal;
-      }, 0);
-    }
+    function equalizeTeamScores(entries) {
+      const targetCount = Math.min(...entries.map((entry) => entry.athletes.length));
+      return entries.map((entry) => {
+        const average = entry.athletes.reduce((sum, athlete) => sum + athlete.score, 0) / entry.athletes.length;
+        const dropped = entry.athletes
+          .slice()
+          .sort((a, b) => Math.abs(a.score - average) - Math.abs(b.score - average)
+            || a.score - b.score
+            || a.name.localeCompare(b.name))
+          .slice(0, Math.max(0, entry.athletes.length - targetCount));
+        const droppedIds = new Set(dropped.map((athlete) => athlete.id));
+        const counted = entry.athletes
+          .filter((athlete) => !droppedIds.has(athlete.id))
+          .sort((a, b) => a.score - b.score || a.name.localeCompare(b.name));
 
-    function getMiddleDropIndex(length) {
-      return Math.floor((length - 1) / 2);
+        return {
+          ...entry,
+          counted,
+          dropped,
+          total: counted.reduce((sum, athlete) => sum + athlete.score, 0)
+        };
+      });
     }
 
     function getTeamEventRoundResult(eventId) {
@@ -3195,36 +3179,17 @@
         };
       }
 
-      const targetCount = Math.min(...teamEntries.map((entry) => entry.athletes.length));
-      const adjustedTeams = teamEntries.map((entry) => {
-        const counted = entry.athletes
-          .slice()
-          .sort((a, b) => a.score - b.score || a.name.localeCompare(b.name));
-        const dropped = [];
-
-        while (counted.length > targetCount) {
-          const dropIndex = getMiddleDropIndex(counted.length);
-          dropped.push(counted.splice(dropIndex, 1)[0]);
-        }
-
-        return {
-          id: entry.id,
-          name: entry.name,
-          members: entry.members.slice(),
-          counted,
-          dropped,
-          total: counted.reduce((sum, athlete) => sum + athlete.score, 0)
-        };
-      });
+      const adjustedTeams = equalizeTeamScores(teamEntries);
 
       const highScore = Math.max(...adjustedTeams.map((team) => team.total));
       const winners = adjustedTeams.filter((team) => team.total === highScore);
       const awardedNames = uniqueNames(winners.flatMap((team) => team.members));
       const dropped = adjustedTeams.flatMap((team) => team.dropped.map((athlete) => team.name + " dropped " + athlete.name + " " + formatScore(athlete.score)));
+      const countPerTeam = adjustedTeams[0] ? adjustedTeams[0].counted.length : 0;
       const detailText = event.label + " winner" + (winners.length === 1 ? "" : "s") + ": "
         + winners.map((team) => team.name + " " + formatScore(team.total)).join(", ")
         + " | +1 for " + awardedNames.join(", ")
-        + (dropped.length ? " | dropped middle/lower-middle scores: " + dropped.join("; ") : "");
+        + (dropped.length ? " | counting " + countPerTeam + " per team; dropped scores closest to the team average: " + dropped.join("; ") : "");
 
       return {
         ready: true,
@@ -3364,26 +3329,11 @@
         };
       }
 
-      const targetCount = Math.min(...teamEntries.map((entry) => entry.athletes.length));
-      const adjustedTeams = teamEntries.map((entry) => {
-        const counted = entry.athletes
-          .slice()
-          .sort((a, b) => a.score - b.score || a.name.localeCompare(b.name));
-        const dropped = [];
-
-        while (counted.length > targetCount) {
-          const dropIndex = getMiddleDropIndex(counted.length);
-          dropped.push(counted.splice(dropIndex, 1)[0]);
-        }
-
-        return {
-          id: entry.team.id,
-          name: entry.team.name,
-          counted,
-          dropped,
-          total: counted.reduce((sum, athlete) => sum + athlete.score, 0)
-        };
-      });
+      const adjustedTeams = equalizeTeamScores(teamEntries.map((entry) => ({
+        id: entry.team.id,
+        name: entry.team.name,
+        athletes: entry.athletes
+      })));
 
       const highScore = Math.max(...adjustedTeams.map((team) => team.total));
       const leaders = adjustedTeams.filter((team) => team.total === highScore);
@@ -3391,8 +3341,9 @@
         ? "auto winner tie: " + leaders.map((team) => team.name).join(", ") + " - " + formatScore(highScore)
         : "auto winner: " + leaders[0].name + " - " + formatScore(highScore);
       const dropped = adjustedTeams.flatMap((team) => team.dropped.map((athlete) => team.name + " dropped " + athlete.name + " " + formatScore(athlete.score)));
-      const detailText = "counting " + targetCount + " athlete" + (targetCount === 1 ? "" : "s") + " per team"
-        + (dropped.length ? " | uneven teams ok - dropped middle/lower-middle scores: " + dropped.join("; ") : " | no dropped scores");
+      const countPerTeam = adjustedTeams[0] ? adjustedTeams[0].counted.length : 0;
+      const detailText = "counting " + countPerTeam + " athlete" + (countPerTeam === 1 ? "" : "s") + " per team"
+        + (dropped.length ? " | uneven teams ok - dropped scores closest to the team average: " + dropped.join("; ") : " | no dropped scores");
 
       return {
         ready: true,
@@ -3447,36 +3398,6 @@
       });
     }
 
-    function renderTeamAthleteManager() {
-      teamAthleteManager.hidden = !isTeamScoringMode();
-      teamAthleteList.innerHTML = "";
-      teamAthleteEmpty.style.display = state.athletes.length ? "none" : "grid";
-
-      state.athletes.forEach((athlete, index) => {
-        const row = document.createElement("div");
-        row.className = "athlete-row team-athlete-row";
-        if (athlete.id === state.activeAthleteId) row.classList.add("is-active");
-
-        const orderNumber = document.createElement("div");
-        orderNumber.className = "order-number";
-        orderNumber.textContent = String(index + 1);
-
-        const name = document.createElement("div");
-        name.className = "athlete-name";
-        name.textContent = athlete.name;
-
-        const removeButton = document.createElement("button");
-        removeButton.type = "button";
-        removeButton.className = "small-button danger";
-        removeButton.textContent = athlete.id === removeAthleteArmedId ? "sure?" : "remove";
-        removeButton.dataset.teamAthleteAction = "remove";
-        removeButton.dataset.id = athlete.id;
-
-        row.append(orderNumber, name, removeButton);
-        teamAthleteList.appendChild(row);
-      });
-    }
-
     function getSavedClasses() {
       if (!Array.isArray(state.savedClasses)) state.savedClasses = [];
       return state.savedClasses;
@@ -3527,21 +3448,14 @@
         editButton.dataset.classAction = "edit";
         editButton.dataset.id = profile.id;
 
-        const renameButton = document.createElement("button");
-        renameButton.type = "button";
-        renameButton.className = "small-button secondary";
-        renameButton.textContent = "rename";
-        renameButton.dataset.classAction = "rename";
-        renameButton.dataset.id = profile.id;
-
         const deleteButton = document.createElement("button");
         deleteButton.type = "button";
         deleteButton.className = "small-button danger";
-        deleteButton.textContent = "delete";
+        deleteButton.textContent = deleteClassArmedId === profile.id ? "sure?" : "delete";
         deleteButton.dataset.classAction = "delete";
         deleteButton.dataset.id = profile.id;
 
-        row.append(name, loadButton, editButton, renameButton, deleteButton);
+        row.append(name, loadButton, editButton, deleteButton);
         classProfileList.appendChild(row);
       });
     }
@@ -4017,12 +3931,11 @@
         score.setAttribute("aria-live", "polite");
         const readyTotal = readyTotals.get(team.id);
         const latestShuffleTotal = latestShuffleTotals.get(team.id);
-        const currentTotal = getTeamCurrentTotal(team);
-        score.textContent = isShuffleMode
-          ? Number.isFinite(latestShuffleTotal) ? formatScore(latestShuffleTotal) : "N/A"
-          : Number.isFinite(readyTotal)
-          ? formatScore(readyTotal)
-          : currentTotal > 0 ? formatScore(currentTotal) : "N/A";
+          score.textContent = isShuffleMode
+            ? Number.isFinite(latestShuffleTotal) ? formatScore(latestShuffleTotal) : "N/A"
+            : Number.isFinite(readyTotal)
+            ? formatScore(readyTotal)
+            : "N/A";
 
         const members = document.createElement("ol");
         members.className = "team-points-members";
@@ -4390,7 +4303,6 @@
       ensureActiveAthlete();
       renderScoringMode();
       renderRoster();
-      renderTeamAthleteManager();
       renderClassProfiles();
       renderJudgingMode();
       renderSummary();
@@ -4400,43 +4312,6 @@
       renderRankings();
       renderComparison();
       renderMarkdownPreview();
-    }
-
-    function addAthleteFromInput(input) {
-      const sourceInput = input && typeof input.value === "string" ? input : athleteNameInput;
-      const name = cleanText(sourceInput.value);
-      if (!name) {
-        setStatus("Name needed.");
-        return;
-      }
-
-      const existing = state.athletes.find((athlete) => athlete.name.toLowerCase() === name.toLowerCase());
-      if (existing) {
-        state.activeAthleteId = existing.id;
-        sourceInput.value = "";
-        save();
-        updateAll();
-        setStatus(existing.name + " selected.");
-        return;
-      }
-
-      const athlete = {
-        id: makeId(),
-        name,
-        scores: defaultScores()
-      };
-      state.athletes.push(athlete);
-      state.completedEventIds = [];
-      state.activeAthleteId = athlete.id;
-      sourceInput.value = "";
-      syncTeamsForRosterChange();
-      save();
-      updateAll();
-      setStatus(name + " added.");
-    }
-
-    function addAthlete() {
-      addAthleteFromInput(athleteNameInput);
     }
 
     function removeAthlete(id) {
@@ -4587,7 +4462,10 @@
     }
 
     function startNewClass() {
+      editingClassProfileId = null;
+      newClassTitle.textContent = "new class";
       newClassNameInput.value = "";
+      newClassAthletesInput.value = "";
       newClassModal.hidden = false;
       window.setTimeout(() => newClassNameInput.focus(), 0);
     }
@@ -4595,6 +4473,8 @@
     function closeNewClass() {
       newClassModal.hidden = true;
       newClassNameInput.value = "";
+      newClassAthletesInput.value = "";
+      editingClassProfileId = null;
     }
 
     function createNewClass() {
@@ -4604,26 +4484,45 @@
         newClassNameInput.focus();
         return;
       }
-      if (getSavedClasses().some((profile) => profile.name.toLowerCase() === name.toLowerCase())) {
+      const athletes = newClassAthletesInput.value
+        .split(/\r?\n/)
+        .map(cleanText)
+        .filter(Boolean);
+      if (!athletes.length) {
+        setStatus("Add at least one athlete.");
+        newClassAthletesInput.focus();
+        return;
+      }
+      if (new Set(athletes.map((athlete) => athlete.toLowerCase())).size !== athletes.length) {
+        setStatus("Each athlete only needs to be listed once.");
+        newClassAthletesInput.focus();
+        return;
+      }
+      const profile = editingClassProfileId ? getClassProfileById(editingClassProfileId) : null;
+      if (getSavedClasses().some((item) => item.id !== editingClassProfileId && item.name.toLowerCase() === name.toLowerCase())) {
         setStatus("A class with that name already exists.");
         newClassNameInput.focus();
         return;
       }
-      const profile = { id: makeId(), name, athletes: [], updatedAt: new Date().toISOString() };
-      getSavedClasses().push(profile);
-      state.activeClassProfileId = profile.id;
-      state.className = profile.name;
+      const isEditing = Boolean(profile);
+      const savedProfile = profile || { id: makeId(), name: "", athletes: [], updatedAt: "" };
+      if (!profile) getSavedClasses().push(savedProfile);
+      savedProfile.name = name;
+      savedProfile.athletes = athletes;
+      savedProfile.updatedAt = new Date().toISOString();
+      state.activeClassProfileId = savedProfile.id;
+      state.className = savedProfile.name;
       state.activeAthleteId = null;
-      state.athletes = [];
+      state.athletes = savedProfile.athletes.map(makeAthleteFromName);
       state.completedEventIds = [];
       state.competition = { active: false, eventId: EVENTS[0].id, queue: [], completedIds: [] };
       state.teamPoints = { teamCount: getTeamPointCount(), mode: getTeamPointMode(), teams: defaultTeamPointTeams(), shuffleWins: [] };
+      if (isTeamScoringMode()) syncTeamsForRosterChange();
       closeNewClass();
       syncInputsFromState();
       save();
       updateAll();
-      setStatus(name + " created. Add athletes to build its roster.");
-      athleteNameInput.focus();
+      setStatus(isEditing ? name + " roster saved." : name + " created.");
     }
 
     function resetCurrentClassRoster() {
@@ -4655,7 +4554,7 @@
       renderClassProfiles();
     }
 
-    function loadClassProfile(id, { editing = false } = {}) {
+    function loadClassProfile(id) {
       const profile = getClassProfileById(id);
       if (!profile) return;
       state.activeClassProfileId = profile.id;
@@ -4679,44 +4578,41 @@
       save();
       updateAll();
       classManagerModal.hidden = true;
-      setStatus(editing
-        ? "Editing " + profile.name + ". Roster changes save automatically."
-        : profile.name + " loaded.");
-      if (editing) athleteNameInput.focus();
+      setStatus(profile.name + " loaded.");
     }
 
     function editClassProfile(id) {
-      loadClassProfile(id, { editing: true });
-    }
-
-    function renameClassProfile(id) {
-      const profile = getSavedClasses().find((item) => item.id === id);
+      const profile = getClassProfileById(id);
       if (!profile) return;
-      const answer = window.prompt("Class name", profile.name);
-      if (answer === null) return;
-      const name = cleanText(answer);
-      if (!name) {
-        setStatus("Class name needed.");
-        return;
-      }
-      if (getSavedClasses().some((item) => item.id !== id && item.name.toLowerCase() === name.toLowerCase())) {
-        setStatus("A class with that name already exists.");
-        return;
-      }
-      profile.name = name;
-      profile.updatedAt = new Date().toISOString();
-      if (state.activeClassProfileId === id) {
-        state.className = name;
-        syncInputsFromState();
-      }
-      save();
-      updateAll();
-      setStatus(name + " renamed.");
+      editingClassProfileId = profile.id;
+      newClassTitle.textContent = "edit class";
+      newClassNameInput.value = profile.name;
+      newClassAthletesInput.value = profile.athletes.join("\n");
+      classManagerModal.hidden = true;
+      newClassModal.hidden = false;
+      window.setTimeout(() => newClassAthletesInput.focus(), 0);
     }
 
     function deleteClassProfile(id) {
       const profile = getSavedClasses().find((item) => item.id === id);
       if (!profile) return;
+
+      if (deleteClassArmedId !== id) {
+        deleteClassArmedId = id;
+        window.clearTimeout(deleteClassTimer);
+        deleteClassTimer = window.setTimeout(() => {
+          if (deleteClassArmedId === id) {
+            deleteClassArmedId = null;
+            updateAll();
+          }
+        }, 2400);
+        updateAll();
+        setStatus("Press sure? to delete " + profile.name + ".");
+        return;
+      }
+
+      deleteClassArmedId = null;
+      window.clearTimeout(deleteClassTimer);
       state.savedClasses = getSavedClasses().filter((item) => item.id !== id);
       if (state.activeClassProfileId === id) state.activeClassProfileId = null;
       save();
@@ -4995,12 +4891,11 @@
           const members = Array.isArray(team.members) && team.members.length ? team.members.join(", ") : "-";
           const readyTotal = readyTotals.get(team.id);
           const latestShuffleTotal = latestShuffleTotals.get(team.id);
-          const currentTotal = getTeamCurrentTotal(team);
           const displayScore = isShuffleMode
             ? Number.isFinite(latestShuffleTotal) ? formatScore(latestShuffleTotal) : "N/A"
             : Number.isFinite(readyTotal)
             ? formatScore(readyTotal)
-            : currentTotal > 0 ? formatScore(currentTotal) : "N/A";
+            : "N/A";
           lines.push("| " + team.name + " | " + members + " | " + displayScore + " |");
         });
         lines.push("");
@@ -5020,6 +4915,18 @@
             lines.push("| --- | --- | --- |");
             wins.forEach((record) => {
               lines.push("| " + record.eventLabel + " | " + record.winners.map((team) => team.name + " " + formatScore(team.total)).join(", ") + " | " + record.awardedNames.join(", ") + " |");
+            });
+            lines.push("");
+            lines.push("| Event | Team | Counted Total | Counted Athletes | Dropped Athletes |");
+            lines.push("| --- | --- | ---: | --- | --- |");
+            wins.forEach((record) => {
+              record.teams.forEach((team) => {
+                const counted = team.counted.map((athlete) => athlete.name + " " + formatScore(athlete.score)).join(", ");
+                const dropped = team.dropped.length
+                  ? team.dropped.map((athlete) => athlete.name + " " + formatScore(athlete.score)).join(", ")
+                  : "-";
+                lines.push("| " + record.eventLabel + " | " + team.name + " | " + formatScore(team.total) + " | " + counted + " | " + dropped + " |");
+              });
             });
           }
         } else {
@@ -5132,18 +5039,11 @@
       if (button.dataset.action === "move-down") moveAthlete(button.dataset.id, 1);
     });
 
-    teamAthleteList.addEventListener("click", (event) => {
-      const button = event.target.closest("button[data-team-athlete-action]");
-      if (!button) return;
-      if (button.dataset.teamAthleteAction === "remove") removeAthlete(button.dataset.id);
-    });
-
     classProfileList.addEventListener("click", (event) => {
       const button = event.target.closest("button[data-class-action]");
       if (!button) return;
       if (button.dataset.classAction === "load") loadClassProfile(button.dataset.id);
       if (button.dataset.classAction === "edit") editClassProfile(button.dataset.id);
-      if (button.dataset.classAction === "rename") renameClassProfile(button.dataset.id);
       if (button.dataset.classAction === "delete") deleteClassProfile(button.dataset.id);
     });
 
@@ -5297,14 +5197,6 @@
     judgePrevEvent.addEventListener("click", () => stepJudgingEvent(-1));
     judgeNextEvent.addEventListener("click", () => stepJudgingEvent(1));
 
-    addAthleteButton.addEventListener("click", addAthlete);
-    athleteNameInput.addEventListener("keydown", (event) => {
-      if (event.key === "Enter") addAthlete();
-    });
-    teamAddAthleteButton.addEventListener("click", () => addAthleteFromInput(teamAthleteNameInput));
-    teamAthleteNameInput.addEventListener("keydown", (event) => {
-      if (event.key === "Enter") addAthleteFromInput(teamAthleteNameInput);
-    });
     saveClassProfileButton.addEventListener("click", saveClassProfile);
     newClassProfileButton.addEventListener("click", startNewClass);
     classManagerClose.addEventListener("click", () => {
@@ -5345,7 +5237,6 @@
     });
     randomizeTeamPointsButton.addEventListener("click", startTeamPointRound);
     resetClassButton.addEventListener("click", resetClass);
-    setClassStartValuesButton.addEventListener("click", setClassStartValues);
     classNameInput.addEventListener("input", syncMetaFromInputs);
     meetNameInput.addEventListener("input", syncMetaFromInputs);
     scoreDateInput.addEventListener("input", syncMetaFromInputs);
@@ -5388,6 +5279,7 @@
         state = JSON.parse(JSON.stringify(nextState));
         resetClassArmed = false;
         removeAthleteArmedId = null;
+        deleteClassArmedId = null;
         pendingTeamPointWinnerId = null;
         syncInputsFromState();
         updateAll();
