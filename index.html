@@ -3,6 +3,13 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="application-name" content="Competition Scores">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-title" content="Competition Scores">
+  <meta name="theme-color" content="#00b050">
+  <link rel="icon" type="image/png" sizes="512x512" href="icon-512.png">
+  <link rel="apple-touch-icon" sizes="180x180" href="apple-touch-icon.png">
+  <link rel="manifest" href="manifest.webmanifest">
   <title>competition scores</title>
   <style>
     * {
@@ -5315,5 +5322,61 @@
     syncInputsFromState();
     updateAll();
   </script>
+  <script>
+    window.AppMigrationConfig = (() => {
+      const keys = [
+        "gymnastics-class-routine-scoring-combined-v1",
+        "gymnastics-class-routine-scoring-team-points-v1",
+        "gymnastics-class-routine-scoring-v2"
+      ];
+      const fromRaw = (key, raw) => raw === null
+        ? { key, present: false }
+        : { key, present: true, rawValue: raw };
+      return {
+        appId: "competition-scores",
+        ownedKeys: keys,
+        validateRecords(records) {
+          const raw = records.has(keys[0]) ? records.get(keys[0]) : null;
+          if (raw !== null) {
+            let state;
+            try { state = JSON.parse(raw); } catch (_error) { throw new Error("Competition Scores data is not valid JSON."); }
+            if (!window.CompetitionScoresStore || !window.CompetitionScoresStore.validState(state)) {
+              throw new Error("Competition Scores data does not match the current app format.");
+            }
+          }
+          for (const key of keys.slice(1)) {
+            const value = records.has(key) ? records.get(key) : null;
+            if (value !== null) {
+              try { JSON.parse(value); } catch (_error) { throw new Error("A Competition Scores companion record is not valid JSON."); }
+            }
+          }
+        },
+        summarizeRecords(records) {
+          const raw = records.get(keys[0]);
+          if (!raw) return "an empty Competition Scores workspace";
+          try {
+            const state = JSON.parse(raw);
+            const count = Array.isArray(state.athletes) ? state.athletes.length : 0;
+            return `${count} athlete${count === 1 ? "" : "s"} and Competition Scores settings`;
+          } catch (_error) { return "Competition Scores settings and data"; }
+        },
+        normalizeLegacyBackup(payload) {
+          if (payload && payload.schemaVersion === "competition-scores-browser-raw-backup-v1" && Array.isArray(payload.records)) {
+            return {
+              label: "Competition Scores raw browser backup",
+              records: payload.records.map((record) => fromRaw(record.key, record.present ? record.rawValue : null))
+            };
+          }
+          if (payload && typeof payload === "object" && window.CompetitionScoresStore?.validState(payload)) {
+            return { label: "Competition Scores backup", records: [fromRaw(keys[0], JSON.stringify(payload))] };
+          }
+          return null;
+        },
+        beforeExport: () => window.CompetitionScoresStore?.flush?.(),
+        beforeReplace: () => window.CompetitionScoresStore?.flush?.()
+      };
+    })();
+  </script>
+  <script src="migration-transfer.js"></script>
 </body>
 </html>
