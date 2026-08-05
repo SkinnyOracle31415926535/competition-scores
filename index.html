@@ -5372,11 +5372,70 @@
           }
           return null;
         },
+        semanticSync: {
+          collections: ["preferences", "workspace", "comparison", "profiles"],
+          async listRecords() {
+            const store = window.CompetitionScoresStore;
+            if (!store) throw new Error("Competition Scores sync is not ready.");
+            const state = store.readCurrent();
+            if (!state) return [];
+            const parts = await store.decompose(state);
+            return [
+              { collection: "preferences", recordId: "current", value: parts.preferences },
+              { collection: "workspace", recordId: "current", value: parts.workspace },
+              { collection: "comparison", recordId: "current", value: parts.comparison },
+              ...parts.profiles.map((item) => ({
+                collection: "profiles",
+                recordId: item.recordId,
+                value: item.value
+              }))
+            ];
+          },
+          validateRecord(record) {
+            const store = window.CompetitionScoresStore;
+            if (!store) return false;
+            if (record.collection === "profiles") {
+              return /^class-[a-f0-9]{64}$/.test(record.recordId)
+                && (record.deleted || store.validProfileValue(record.value));
+            }
+            if (record.deleted || record.recordId !== "current") return false;
+            if (record.collection === "preferences") return store.validPreferencesValue(record.value);
+            if (record.collection === "workspace") return store.validWorkspaceValue(record.value);
+            if (record.collection === "comparison") return store.validComparisonValue(record.value);
+            return false;
+          },
+          verifyLocal(record) {
+            return window.CompetitionScoresStore.verifyCurrentRecord(
+              record.collection,
+              record.recordId,
+              record.value,
+              { source: "local", deleted: Boolean(record.deleted) }
+            );
+          },
+          applyRemote(record) {
+            const store = window.CompetitionScoresStore;
+            const metadata = { source: "remote", deleted: Boolean(record.deleted) };
+            if (record.collection === "preferences") return store.applyPreferences(record.value, metadata);
+            if (record.collection === "workspace") return store.applyWorkspace(record.value, metadata);
+            if (record.collection === "comparison") return store.applyComparison(record.value, metadata);
+            if (record.collection === "profiles") {
+              return store.applyProfile(record.recordId, record.value, metadata);
+            }
+            throw new Error("Competition Scores sync collection is invalid.");
+          },
+          priority(record) {
+            if (record.collection === "profiles") return record.deleted ? 10 : 0;
+            if (record.collection === "workspace") return 1;
+            if (record.collection === "comparison") return 2;
+            return 3;
+          }
+        },
         beforeExport: () => window.CompetitionScoresStore?.flush?.(),
         beforeReplace: () => window.CompetitionScoresStore?.flush?.()
       };
     })();
   </script>
+  <script src="semantic-sync.js"></script>
   <script src="migration-transfer.js"></script>
 </body>
 </html>

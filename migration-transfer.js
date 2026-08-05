@@ -115,6 +115,30 @@
     }
   };
 
+  const rawFromLegacySyncValue = (value) => {
+    if (!plainObject(value) || typeof value.present !== "boolean"
+      || !["json", "text"].includes(value.encoding)) {
+      throw new Error("A previous private-sync record has an unsupported schema.");
+    }
+    if (!value.present) {
+      if (value.encoding !== "text" || value.value !== null) {
+        throw new Error("A previous private-sync deletion record is invalid.");
+      }
+      return null;
+    }
+    if (value.encoding === "text") {
+      if (typeof value.value !== "string") throw new Error("A previous private-sync text record is invalid.");
+      return value.value;
+    }
+    try {
+      const raw = JSON.stringify(value.value);
+      if (typeof raw !== "string") throw new Error("not JSON");
+      return raw;
+    } catch (_error) {
+      throw new Error("A previous private-sync JSON record is invalid.");
+    }
+  };
+
   const normalizedRecords = (records, source = "transfer") => {
     if (!Array.isArray(records)) throw new Error("The transfer does not contain a record list.");
     const seen = new Set();
@@ -131,6 +155,27 @@
       throw new Error("The transfer did not contain any app data.");
     }
     return normalized;
+  };
+
+  // Existing app backups sometimes pre-date a companion localStorage key.  Make
+  // those fixed keys explicit as empty records so the normal replacement path
+  // can stay strict without abandoning backwards-compatible restores.
+  const completeFixedOwnedRecords = (records) => {
+    const byKey = new Map(records.map((record) => [record.key, record]));
+    for (const key of Array.isArray(config.ownedKeys) ? config.ownedKeys : []) {
+      if (!byKey.has(key)) byKey.set(key, { key, raw: null });
+    }
+    return [...byKey.values()].sort((left, right) => left.key.localeCompare(right.key));
+  };
+
+  const requireCurrentRecords = (records) => {
+    const incoming = new Set(records.map((record) => record.key));
+    const omitted = currentKeys().filter((key) => !incoming.has(key));
+    if (omitted.length) {
+      throw new Error(
+        "This transfer omits current app data, so it cannot safely replace this device. Export a full bundle from the source app instead.",
+      );
+    }
   };
 
   const normalizeFile = (payload) => {
@@ -156,7 +201,7 @@
       const legacy = config.normalizeLegacyBackup(payload);
       if (legacy) {
         return {
-          records: normalizedRecords(legacy.records, "legacy"),
+          records: completeFixedOwnedRecords(normalizedRecords(legacy.records, "legacy")),
           sourceLabel: legacy.label || "existing app backup",
         };
       }
@@ -197,6 +242,7 @@
     try {
       const parsed = JSON.parse(await file.text());
       const candidate = normalizeFile(parsed);
+      requireCurrentRecords(candidate.records);
       validate(candidate.records);
       showPreview(candidate, file.name || "Selected file");
     } catch (error) {
@@ -244,6 +290,36 @@
       }
       setMessage(error instanceof Error ? error.message : "The transfer could not be applied.", "error");
     }
+  };
+
+  const downloadLegacyPrivateRecovery = async () => {
+    let response;
+    try {
+      response = await fetch(`/api/app-sync?appId=${encodeURIComponent(config.appId)}&legacy=browser-storage`, {
+        cache: "no-store",
+        credentials: "same-origin",
+      });
+    } catch (_error) {
+      throw new Error("Previous private-sync data is offline. Local data was not changed.");
+    }
+    const payload = await (async () => {
+      try { return await response.json(); } catch (_error) { return null; }
+    })();
+    if (!response.ok || !plainObject(payload) || !Array.isArray(payload.records)) {
+      throw new Error(payload?.error || "Previous private-sync recovery is unavailable. Local data was not changed.");
+    }
+    const records = new Map();
+    for (const record of payload.records) {
+      if (!plainObject(record) || !ownKey(record.recordId) || records.has(record.recordId)) {
+        throw new Error("Previous private-sync data has an invalid app record.");
+      }
+      records.set(record.recordId, rawFromLegacySyncValue(record.value));
+    }
+    for (const key of Array.isArray(config.ownedKeys) ? config.ownedKeys : []) {
+      if (!records.has(key)) records.set(key, null);
+    }
+    if (!records.size) throw new Error("No previous private-sync records were found for this app.");
+    download(buildEnvelope([...records.entries()].map(([key, raw]) => ({ key, raw }))), "private-v1-recovery");
   };
 
   const syncStateKey = `__ryan_private_sync_${config.appId}_v1`;
@@ -315,6 +391,12 @@
   }, `sync-conflict-${conflict.key.replace(/[^a-z0-9]+/gi, "-").slice(0, 80)}`);
 
   const configureSync = (host) => {
+    // Every migrated app declares a semantic adapter. Never fall back to
+    // storage-key synchronization when that adapter is unavailable.
+    if (config.semanticSync) {
+      window.RyanSemanticAppSync?.configure?.({ config, host, download });
+      return;
+    }
     const section = host.querySelector("[data-transfer-sync]");
     const syncCopy = host.querySelector("[data-transfer-sync-status]");
     const syncButton = host.querySelector("[data-transfer-sync-now]");
@@ -531,6 +613,7 @@
             <button type="button" data-transfer-export>Export Settings &amp; Data</button>
             <button type="button" data-transfer-import>Import Settings &amp; Data</button>
           </div>
+          <button type="button" data-transfer-private-recovery hidden>Download previous private-sync recovery</button>
           <input data-transfer-file type="file" accept="application/json,.json" hidden>
           <p data-transfer-message role="status" aria-live="polite"></p>
           <div data-transfer-preview hidden>
@@ -550,6 +633,7 @@
     status.message = host.querySelector("[data-transfer-message]");
     status.preview = host.querySelector("[data-transfer-preview]");
     const picker = host.querySelector("[data-transfer-file]");
+    const privateRecovery = host.querySelector("[data-transfer-private-recovery]");
 
     host.querySelector("[data-transfer-export]").addEventListener("click", async () => {
       try {
@@ -564,6 +648,17 @@
       picker.value = "";
       picker.click();
     });
+    if (privateRecovery && config.semanticSync && syncSupported()) {
+      privateRecovery.hidden = false;
+      privateRecovery.addEventListener("click", () => void (async () => {
+        try {
+          await downloadLegacyPrivateRecovery();
+          setMessage("Previous private-sync data was downloaded as a recovery transfer. Review it, then import it normally.", "success");
+        } catch (error) {
+          setMessage(error instanceof Error ? error.message : "Previous private-sync recovery could not be downloaded.", "error");
+        }
+      })());
+    }
     picker.addEventListener("change", () => void importFile(picker.files && picker.files[0]));
     host.querySelector("[data-transfer-confirm]").addEventListener("click", () => void applyCandidate());
     configureSync(host);
