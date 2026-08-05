@@ -246,6 +246,255 @@
     }
   };
 
+  const syncStateKey = `__ryan_private_sync_${config.appId}_v1`;
+  const syncSupported = () => location.protocol === "https:"
+    && location.hostname.endsWith(".chatgpt.site");
+  const syncValue = (raw) => {
+    if (raw === null) return { present: false, encoding: "text", value: null };
+    try {
+      return { present: true, encoding: "json", value: JSON.parse(raw) };
+    } catch (_error) {
+      return { present: true, encoding: "text", value: raw };
+    }
+  };
+  const rawFromSyncValue = (value) => {
+    if (!plainObject(value) || typeof value.present !== "boolean"
+      || !["json", "text"].includes(value.encoding)) {
+      throw new Error("The synchronized record has an unsupported schema.");
+    }
+    if (!value.present) {
+      if (value.encoding !== "text" || value.value !== null) {
+        throw new Error("The synchronized empty record is invalid.");
+      }
+      return null;
+    }
+    if (value.encoding === "text") {
+      if (typeof value.value !== "string") throw new Error("The synchronized text record is invalid.");
+      return value.value;
+    }
+    try {
+      const raw = JSON.stringify(value.value);
+      if (typeof raw !== "string") throw new Error("not JSON");
+      return raw;
+    } catch (_error) {
+      throw new Error("The synchronized JSON record is invalid.");
+    }
+  };
+  const fingerprint = (value) => JSON.stringify(value);
+  const readSyncState = () => {
+    try {
+      const value = JSON.parse(localStorage.getItem(syncStateKey) || "null");
+      if (!plainObject(value) || typeof value.enabled !== "boolean" || !plainObject(value.records)) {
+        return { enabled: false, records: {} };
+      }
+      return { enabled: value.enabled, records: value.records };
+    } catch (_error) {
+      return { enabled: false, records: {} };
+    }
+  };
+  const saveSyncState = (state) => localStorage.setItem(syncStateKey, JSON.stringify(state));
+  const responseJson = async (response) => {
+    try { return await response.json(); } catch (_error) { return null; }
+  };
+  const applyRemoteValue = (key, value) => {
+    const raw = rawFromSyncValue(value);
+    if (raw === null) localStorage.removeItem(key);
+    else localStorage.setItem(key, raw);
+    if (localStorage.getItem(key) !== raw) {
+      throw new Error("Browser storage did not confirm the synchronized record.");
+    }
+  };
+  const downloadConflict = (conflict) => download({
+    kind: "ryan-app-sync-conflict",
+    schemaVersion: 1,
+    appId: config.appId,
+    createdAt: new Date().toISOString(),
+    recordId: conflict.key,
+    local: conflict.local,
+    remote: conflict.remote,
+  }, `sync-conflict-${conflict.key.replace(/[^a-z0-9]+/gi, "-").slice(0, 80)}`);
+
+  const configureSync = (host) => {
+    const section = host.querySelector("[data-transfer-sync]");
+    const syncCopy = host.querySelector("[data-transfer-sync-status]");
+    const syncButton = host.querySelector("[data-transfer-sync-now]");
+    const conflictsNode = host.querySelector("[data-transfer-conflicts]");
+    if (!section || !syncCopy || !syncButton || !conflictsNode || !syncSupported()) return;
+    section.hidden = false;
+
+    const update = (message, kind = "") => {
+      syncCopy.textContent = message;
+      syncCopy.dataset.kind = kind;
+    };
+    const sync = async (interactive = false) => {
+      update("Syncing this private site…", "working");
+      let response;
+      try {
+        response = await fetch(`/api/app-sync?appId=${encodeURIComponent(config.appId)}`, {
+          cache: "no-store",
+          credentials: "same-origin",
+        });
+      } catch (_error) {
+        update("Offline. Local data is preserved and will retry later.", "offline");
+        return;
+      }
+      const manifest = await responseJson(response);
+      if (!response.ok || !plainObject(manifest) || !Array.isArray(manifest.records)) {
+        update(manifest?.error || "Private sync is unavailable. Local data is preserved.", "offline");
+        return;
+      }
+      const remote = new Map();
+      for (const record of manifest.records) {
+        if (!plainObject(record) || !ownKey(record.recordId)
+          || !Number.isSafeInteger(record.revision) || record.revision < 1) {
+          update("A synchronized record is invalid and was not applied.", "error");
+          return;
+        }
+        try { rawFromSyncValue(record.value); } catch (error) {
+          update(error instanceof Error ? error.message : "A synchronized record is invalid.", "error");
+          return;
+        }
+        remote.set(record.recordId, record);
+      }
+      const state = readSyncState();
+      const conflicts = [];
+      let changed = 0;
+      let appliedRemote = false;
+      const keys = new Set([...currentKeys(), ...remote.keys()]);
+      const upload = async (key, value, expectedRevision) => {
+        const result = await fetch("/api/app-sync", {
+          method: "PUT",
+          credentials: "same-origin",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            version: 1,
+            appId: config.appId,
+            collection: "browser-storage",
+            recordId: key,
+            expectedRevision,
+            value,
+          }),
+        });
+        const body = await responseJson(result);
+        if (result.ok && plainObject(body) && plainObject(body.record)) return { record: body.record };
+        if (result.status === 409 && plainObject(body) && plainObject(body.current)) return { conflict: body.current };
+        throw new Error(body?.error || "Private sync could not save a record.");
+      };
+      try {
+        for (const key of keys) {
+          const local = syncValue(localStorage.getItem(key));
+          const localFingerprint = fingerprint(local);
+          const known = plainObject(state.records[key]) ? state.records[key] : null;
+          const remoteRecord = remote.get(key) || null;
+          if (!remoteRecord) {
+            if (!local.present) continue;
+            const result = await upload(key, local, null);
+            if (result.record) {
+              state.records[key] = { revision: result.record.revision, fingerprint: localFingerprint };
+              changed += 1;
+            } else conflicts.push({ key, local, remote: result.conflict });
+            continue;
+          }
+          const remoteFingerprint = fingerprint(remoteRecord.value);
+          if (!known) {
+            if (!local.present) {
+              applyRemoteValue(key, remoteRecord.value);
+              state.records[key] = { revision: remoteRecord.revision, fingerprint: remoteFingerprint };
+              changed += 1;
+              appliedRemote = true;
+            } else if (localFingerprint === remoteFingerprint) {
+              state.records[key] = { revision: remoteRecord.revision, fingerprint: localFingerprint };
+            } else {
+              conflicts.push({ key, local, remote: remoteRecord });
+            }
+            continue;
+          }
+          const localChanged = known.fingerprint !== localFingerprint;
+          const remoteChanged = known.revision !== remoteRecord.revision;
+          if (localChanged && remoteChanged && localFingerprint !== remoteFingerprint) {
+            conflicts.push({ key, local, remote: remoteRecord });
+          } else if (localChanged) {
+            const result = await upload(key, local, known.revision);
+            if (result.record) {
+              state.records[key] = { revision: result.record.revision, fingerprint: localFingerprint };
+              changed += 1;
+            } else conflicts.push({ key, local, remote: result.conflict });
+          } else if (remoteChanged) {
+            applyRemoteValue(key, remoteRecord.value);
+            state.records[key] = { revision: remoteRecord.revision, fingerprint: remoteFingerprint };
+            changed += 1;
+            appliedRemote = true;
+          } else {
+            state.records[key] = { revision: remoteRecord.revision, fingerprint: localFingerprint };
+          }
+        }
+      } catch (error) {
+        update(error instanceof Error ? error.message : "Private sync did not finish.", "offline");
+        return;
+      }
+      state.enabled = true;
+      saveSyncState(state);
+      conflictsNode.replaceChildren();
+      for (const conflict of conflicts) {
+        const row = document.createElement("div");
+        row.className = "app-transfer-conflict";
+        const label = document.createElement("strong");
+        label.textContent = `${conflict.key}: both copies changed`;
+        const keep = document.createElement("button");
+        keep.type = "button";
+        keep.textContent = "Keep this device";
+        const useRemote = document.createElement("button");
+        useRemote.type = "button";
+        useRemote.textContent = "Use synchronized copy";
+        const resolve = async (choice) => {
+          try {
+            downloadConflict(conflict);
+            if (choice === "remote") {
+              applyRemoteValue(conflict.key, conflict.remote.value);
+              const next = readSyncState();
+              next.enabled = true;
+              next.records[conflict.key] = {
+                revision: conflict.remote.revision,
+                fingerprint: fingerprint(conflict.remote.value),
+              };
+              saveSyncState(next);
+              window.setTimeout(() => window.location.reload(), 250);
+              return;
+            }
+            const result = await upload(conflict.key, conflict.local, conflict.remote.revision);
+            if (!result.record) throw new Error("That record changed again. Review the new conflict.");
+            const next = readSyncState();
+            next.enabled = true;
+            next.records[conflict.key] = {
+              revision: result.record.revision,
+              fingerprint: fingerprint(conflict.local),
+            };
+            saveSyncState(next);
+            await sync(true);
+          } catch (error) {
+            update(error instanceof Error ? error.message : "Conflict resolution did not finish.", "error");
+          }
+        };
+        keep.addEventListener("click", () => void resolve("local"));
+        useRemote.addEventListener("click", () => void resolve("remote"));
+        row.append(label, keep, useRemote);
+        conflictsNode.append(row);
+      }
+      if (conflicts.length) {
+        update(`${conflicts.length} conflict${conflicts.length === 1 ? " needs" : "s need"} your choice. Nothing was overwritten.`, "conflict");
+      } else {
+        update(changed ? `Synced ${changed} record${changed === 1 ? "" : "s"} safely.` : "Synced. This device is current.", "synced");
+        if (appliedRemote && interactive) window.setTimeout(() => window.location.reload(), 250);
+      }
+    };
+
+    syncButton.addEventListener("click", () => void sync(true));
+    if (readSyncState().enabled) {
+      void sync(false);
+      window.setInterval(() => void sync(false), 15_000);
+    }
+  };
+
   const install = () => {
     const host = document.createElement("aside");
     host.className = "app-transfer-tools";
@@ -266,6 +515,12 @@
         .app-transfer-tools [data-transfer-message][data-kind="success"] { color: #0d5c2d; }
         .app-transfer-tools [data-transfer-preview] { margin-top: 10px; padding-top: 10px; border-top: 1px solid #9ac9a7; }
         .app-transfer-tools [data-transfer-preview] button { width: 100%; margin-top: 8px; background: #0f6b36; }
+        .app-transfer-tools [data-transfer-sync] { margin-top: 10px; padding-top: 10px; border-top: 1px solid #9ac9a7; }
+        .app-transfer-tools [data-transfer-sync] strong { display: block; margin-bottom: 4px; }
+        .app-transfer-tools [data-transfer-sync-now] { width: 100%; margin: 7px 0; background: #1e5f86; }
+        .app-transfer-tools [data-transfer-sync-status][data-kind="conflict"] { color: #9a3a00; }
+        .app-transfer-tools .app-transfer-conflict { display: grid; gap: 6px; margin-top: 8px; padding-top: 8px; border-top: 1px solid #bad1c0; font-size: 12px; }
+        .app-transfer-tools .app-transfer-conflict button { min-height: 32px; padding: 5px; font-size: 12px; background: #704d11; }
         @media (max-width: 480px) { .app-transfer-tools { right: 8px; bottom: 8px; width: min(340px, calc(100vw - 16px)); } }
       </style>
       <details>
@@ -282,6 +537,12 @@
             <p data-transfer-preview-copy></p>
             <button type="button" data-transfer-confirm>Replace data &amp; download safety backup</button>
           </div>
+          <section data-transfer-sync hidden>
+            <strong>Private device sync</strong>
+            <p data-transfer-sync-status>Connect this browser to the private, same-site sync store.</p>
+            <button type="button" data-transfer-sync-now>Enable private sync &amp; sync now</button>
+            <div data-transfer-conflicts></div>
+          </section>
         </div>
       </details>`;
     document.body.append(host);
@@ -305,6 +566,7 @@
     });
     picker.addEventListener("change", () => void importFile(picker.files && picker.files[0]));
     host.querySelector("[data-transfer-confirm]").addEventListener("click", () => void applyCandidate());
+    configureSync(host);
   };
 
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", install, { once: true });
